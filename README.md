@@ -1,170 +1,90 @@
+<div align="center">
+
 # bigg-cli
 
-`bigg` is a production-ready command-line client for the [BiGG Models API](http://bigg.ucsd.edu/data_access), built for scripted and interactive access to models, reactions, metabolites, genes, and search workflows.
+[![Release](https://img.shields.io/github/v/release/decent-tools-for-thought/bigg-cli?sort=semver&color=0f766e)](https://github.com/decent-tools-for-thought/bigg-cli/releases)
+![Python](https://img.shields.io/badge/python-3.11%2B-0ea5e9)
+![License](https://img.shields.io/badge/license-MIT-14b8a6)
+
+Production-ready command-line client for the BiGG Models API, with model, universal, search, namespace, and analysis workflows from the shell.
+
+</div>
+
+> [!IMPORTANT]
+> This codebase is entirely AI-generated. It is useful to me, I hope it might be useful to others, and issues and contributions are welcome.
+
+## Map
+- [Install](#install)
+- [Functionality](#functionality)
+- [Configuration](#configuration)
+- [Quick Start](#quick-start)
+- [Credits](#credits)
 
 ## Install
-
-From source (editable):
-
-```bash
-python -m pip install -e .
-```
-
-Standard install:
+$$\color{#0EA5E9}Install \space \color{#14B8A6}Tool$$
 
 ```bash
 python -m pip install .
-```
-
-## Quick Start
-
-Show top-level help:
-
-```bash
-bigg
 bigg --help
-bigg docs
 ```
 
-Get database version:
+For local development:
 
 ```bash
-bigg version
-bigg version --output json
+python -m pip install -e ".[dev]"
+ruff check .
+mypy src tests
+pytest
 ```
 
-List models and filter output:
+## Functionality
+$$\color{#0EA5E9}Model \space \color{#14B8A6}Browse$$
+- `bigg models list|show|summary|download|download-static`: inspect and export BiGG models.
+- `bigg models reactions|reaction|reaction-equation`: browse model reaction tables and one reaction in detail.
+- `bigg models metabolites|metabolite`: browse model metabolite tables and one metabolite in detail.
+- `bigg models genes|gene|exists|export-ids|stats`: inspect genes, presence checks, ID exports, and summary stats.
 
-```bash
-bigg models list --limit 5
-bigg models list --output json
-```
+$$\color{#0EA5E9}Search \space \color{#14B8A6}Lookup$$
+- `bigg search`: query the BiGG search endpoint by family.
+- `bigg find <query>`: search across resource families in one call.
+- `bigg show <id>`: resolve an identifier across model and universal resources.
+- `bigg where gene <gene-id>`: find matching genes across models.
+- `bigg compare models <a> <b>`: compare model overlap and differences.
+- `bigg links <resource> <id>`: flatten cross-database links for one resource.
+- `bigg batch show <resource> --id ...`: resolve many resources in one command.
 
-Look up details:
+$$\color{#0EA5E9}Universal \space \color{#14B8A6}Space$$
+- `bigg universal reactions|reaction`: browse universal reactions.
+- `bigg universal metabolites|metabolite`: browse universal metabolites.
+- `bigg universal where-reaction|where-metabolite`: list model usage for one universal entity.
 
-```bash
-bigg models show iND750
-bigg models reaction iND750 GAPD
-bigg models metabolite iND750 10fthf_c
-bigg models gene iMM904 Q0045
-bigg show iND750
-```
-
-Search the catalog:
-
-```bash
-bigg search g3p --type metabolites
-bigg search iJO1366 --type models --output json
-```
-
-Universal namespace:
-
-```bash
-bigg universal reactions --limit 10
-bigg universal reaction ADA
-bigg universal metabolite g3p
-bigg universal where-reaction ADA
-bigg universal where-metabolite g3p
-
-Download static model files and namespace resources:
-
-```bash
-bigg models download-static iMM904 --format xml
-bigg models download-static iMM904 --format mat --out iMM904.mat
-bigg namespace reactions
-bigg namespace metabolites
-bigg namespace universal-model
-```
-```
-
-Generic API escape hatch:
-
-```bash
-bigg api get /api/v2/models/iND750
-bigg api get /api/v2/search --query query=g3p --query search_type=metabolites
-
-Additional analysis workflows:
-
-```bash
-bigg compare models iJO1366 iML1515
-bigg where gene gapA
-bigg links reaction ADA
-bigg batch show model --id iJO1366 --id iML1515
-```
-
-## Command Surface
-
-- `version`: BiGG database/API version.
-- `docs`: Generated documentation for all available commands and usage.
-- `search`: Query API search endpoint (`models|reactions|metabolites|genes`).
-- `find <query>`: Search all resource families in one call.
-- `show <id>`: Resolve an ID across model/universal resources.
-- `where gene <gene_id>`: Find matching genes across models.
-- `compare models <a> <b>`: Compare overlap and differences.
-- `links <resource> <id> [--model-id ...]`: Flatten external database links.
-- `batch show <resource> --id ... [--from-file ...]`: Batch resource resolution.
-- `models`:
-  - `list`
-  - `show <model_id>`
-  - `summary <model_id>`
-  - `download <model_id>`
-  - `download-static <model_id> --format xml|xml.gz|json|mat`
-  - `reactions <model_id>` / `reaction <model_id> <reaction_id>`
-  - `reaction-equation <model_id> <reaction_id>`
-  - `metabolites <model_id>` / `metabolite <model_id> <metabolite_id>`
-  - `genes <model_id>` / `gene <model_id> <gene_id>`
-  - `exists <model_id> [--reaction ...] [--metabolite ...] [--gene ...]`
-  - `export-ids <model_id> --type reactions|metabolites|genes`
-  - `stats [--organism <pattern>]`
-- `universal`:
-  - `reactions` / `reaction <reaction_id>`
-  - `metabolites` / `metabolite <metabolite_id>`
-  - `where-reaction <reaction_id>`
-  - `where-metabolite <metabolite_id>`
-- `api get <path>`: Direct GET against API/static endpoints.
-- `fetch <path-or-url>`: GET with optional field extraction.
-- `namespace`:
-  - `reactions`
-  - `metabolites`
-  - `universal-model`
-
-## Output Modes
-
-Global `--output` supports:
-
-- `text` (default): concise, readable summaries and tabular list-style lines.
-- `json`: full structured JSON response.
-- `jsonl`: one record per line for list responses.
-
-`jsonl` is valid only for list-like responses; scalar/object responses return a validation error.
+$$\color{#0EA5E9}Raw \space \color{#14B8A6}Access$$
+- `bigg api get <path>`: direct GET against API and static endpoints.
+- `bigg fetch <path-or-url>`: generic GET with optional field extraction.
+- `bigg namespace reactions|metabolites|universal-model`: fetch static namespace resources.
 
 ## Configuration
+$$\color{#0EA5E9}Save \space \color{#14B8A6}Defaults$$
 
-Configuration precedence is explicit:
+Configuration precedence:
 
 1. CLI flags
 2. Environment variables
-3. XDG config file
+3. Config file
 4. Built-in defaults
 
 Supported settings:
 
-- `base_url`
-- `timeout`
-- `output`
+- `BIGG_BASE_URL`
+- `BIGG_TIMEOUT`
+- `BIGG_OUTPUT`
 
-Environment variables:
-
-- `BIGG_BASE_URL` (default: `https://bigg.ucsd.edu`)
-- `BIGG_TIMEOUT` (seconds, default: `20`)
-- `BIGG_OUTPUT` (`text|json|jsonl`, default: `text`)
-
-Config file locations:
+Config files:
 
 - `$XDG_CONFIG_HOME/bigg-cli/config.toml`
-- `~/.config/bigg-cli/config.toml` (fallback)
+- `~/.config/bigg-cli/config.toml`
 
-Example `config.toml`:
+Example:
 
 ```toml
 base_url = "https://bigg.ucsd.edu"
@@ -172,43 +92,24 @@ timeout = 30
 output = "text"
 ```
 
-## Behavior and Errors
+No authentication is required for BiGG API v2.
 
-- Usage/config/validation errors exit with code `2`.
-- Runtime/API/network failures exit nonzero (`1`).
-- HTTP errors include endpoint, status, and concise details.
-- JSON parse failures are reported clearly.
-- Timeouts are explicit and configurable.
-
-No auth is required for BiGG API v2.
-
-## Development
-
-Install dev dependencies:
+## Quick Start
+$$\color{#0EA5E9}Try \space \color{#14B8A6}Lookup$$
 
 ```bash
-python -m pip install -e ".[dev]"
+bigg version
+bigg models list --limit 5
+bigg models show iND750
+bigg models reaction iND750 GAPD
+bigg search g3p --type metabolites --output json
+bigg universal reaction ADA
+bigg namespace reactions
+bigg compare models iJO1366 iML1515
 ```
 
-Run checks:
+## Credits
 
-```bash
-ruff check .
-mypy src tests
-pytest
-```
+This client is built for the BiGG Models API and is not affiliated with BiGG Models or SBRG.
 
-## API Caveats
-
-- Respect upstream guidance to avoid high request rates (BiGG asks users not to exceed ~10 requests/second).
-- API data shape can vary across endpoints; `--output json` is safest for downstream machine use.
-- `models download` uses JSON endpoint `/api/v2/models/{id}/download` and writes raw JSON model data.
-- Static model formats use `/static/models/{model_id}.{xml|xml.gz|json|mat}`.
-- Namespace downloads use `/static/namespace/bigg_models_reactions.txt`, `/static/namespace/bigg_models_metabolites.txt`, and `/static/namespace/universal_model.json`.
-
-## Attribution
-
-This tool wraps the BiGG Models API provided by the Systems Biology Research Group (SBRG), UCSD.
-
-Reference publication:
-King ZA et al. (2016) *BiGG Models: A platform for integrating, standardizing, and sharing genome-scale models*.
+Credit goes to the Systems Biology Research Group and the BiGG Models maintainers for the database, API, and documentation this tool depends on.
