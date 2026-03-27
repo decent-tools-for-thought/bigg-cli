@@ -299,6 +299,96 @@ def _add_api_commands(subparsers: Any) -> None:
     )
 
 
+def _format_usage_token(action: argparse.Action) -> str:
+    metavar = action.metavar
+    if isinstance(metavar, tuple):
+        token_name = " ".join(str(v) for v in metavar)
+    elif isinstance(metavar, str) and metavar:
+        token_name = metavar
+    else:
+        token_name = action.dest
+
+    if action.option_strings:
+        option = action.option_strings[-1]
+        if action.nargs == 0:
+            return option if action.required else f"[{option}]"
+        rendered = f"{option} {token_name}"
+        return rendered if action.required else f"[{rendered}]"
+
+    if action.nargs == "?":
+        return f"[<{token_name}>]"
+    if action.nargs == "*":
+        return f"[<{token_name}> ...]"
+    if action.nargs == "+":
+        return f"<{token_name}> [<{token_name}> ...]"
+    return f"<{token_name}>"
+
+
+def _collect_command_docs(
+    parser: argparse.ArgumentParser,
+    *,
+    prefix: tuple[str, ...],
+    help_text: str,
+) -> list[tuple[str, str, str]]:
+    docs: list[tuple[str, str, str]] = []
+
+    if prefix:
+        usage_parts = [
+            _format_usage_token(action)
+            for action in parser._actions
+            if action.dest != "help" and not isinstance(action, argparse._SubParsersAction)
+        ]
+        usage = " ".join(["bigg", *prefix, *usage_parts]).strip()
+        docs.append((" ".join(prefix), help_text, usage))
+
+    subparsers_action: Any | None = None
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            subparsers_action = action
+            break
+
+    if subparsers_action is None:
+        return docs
+
+    help_map = {
+        _action.dest: (_action.help or "")
+        for _action in getattr(subparsers_action, "_choices_actions", [])
+    }
+    for name, subparser in sorted(subparsers_action.choices.items()):
+        child_help = help_map.get(name, "")
+        docs.extend(
+            _collect_command_docs(
+                subparser,
+                prefix=(*prefix, name),
+                help_text=child_help,
+            )
+        )
+    return docs
+
+
+def render_command_docs(parser: argparse.ArgumentParser) -> str:
+    lines = ["BiGG CLI command documentation", "", "Global options:"]
+
+    for action in parser._actions:
+        if action.dest == "help" or isinstance(action, argparse._SubParsersAction):
+            continue
+        if not action.option_strings:
+            continue
+        flags = ", ".join(action.option_strings)
+        help_text = action.help or ""
+        lines.append(f"{flags}: {help_text}")
+
+    lines.extend(["", "Commands:"])
+    for command, help_text, usage in _collect_command_docs(parser, prefix=(), help_text=""):
+        desc = help_text or "No description provided"
+        lines.append(f"{command}")
+        lines.append(f"  {desc}")
+        lines.append(f"  Usage: {usage}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = _HelpParser(
         prog="bigg",
@@ -312,6 +402,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_models_commands(subparsers)
     _add_universal_commands(subparsers)
     _add_api_commands(subparsers)
+    subparsers.add_parser("docs", help="Show generated documentation for all commands")
     return parser
 
 
@@ -333,6 +424,10 @@ def _print_rendered(data: JsonData, *, output: str, context: str) -> int:
 
 
 def dispatch(args: argparse.Namespace) -> int:
+    if args.command == "docs":
+        print(render_command_docs(build_parser()))
+        return 0
+
     base_url, timeout, output = _resolve_config(args)
     if args.command is None:
         return 0

@@ -40,6 +40,18 @@ def test_top_level_help() -> None:
     assert err == ""
 
 
+def test_docs_command_lists_commands() -> None:
+    code, out, err = _run(["docs"])
+    assert code == 0
+    assert "BiGG CLI command documentation" in out
+    assert "version" in out
+    assert "docs" in out
+    assert "models download-static" in out
+    assert "universal where-reaction" in out
+    assert "api get" in out
+    assert err == ""
+
+
 def test_usage_error_exit_code_2() -> None:
     code, out, err = _run(["search"])
     assert code == 2

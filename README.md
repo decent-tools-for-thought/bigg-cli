@@ -23,6 +23,7 @@ Show top-level help:
 ```bash
 bigg
 bigg --help
+bigg docs
 ```
 
 Get database version:
@@ -94,6 +95,7 @@ bigg batch show model --id iJO1366 --id iML1515
 ## Command Surface
 
 - `version`: BiGG database/API version.
+- `docs`: Generated documentation for all available commands and usage.
 - `search`: Query API search endpoint (`models|reactions|metabolites|genes`).
 - `find <query>`: Search all resource families in one call.
 - `show <id>`: Resolve an ID across model/universal resources.
