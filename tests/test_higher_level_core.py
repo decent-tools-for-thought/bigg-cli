@@ -4,8 +4,11 @@ from typing import Any, cast
 
 from bigg_cli.client import BiggApiClient
 from bigg_cli.core import (
+    op_batch_show,
+    op_compare_models,
     op_fetch,
     op_find,
+    op_links,
     op_model_export_ids,
     op_model_reaction_equation,
     op_model_stats,
@@ -18,26 +21,41 @@ from bigg_cli.core import (
     op_show,
     op_universal_where_metabolite,
     op_universal_where_reaction,
+    op_where_gene,
 )
 from bigg_cli.errors import ApiError
 
 
 class FakeClient:
     def search(self, query: str, search_type: str) -> dict[str, Any]:
+        if search_type == "genes":
+            return {"results_count": 1, "results": [{"bigg_id": query, "model_bigg_id": "i1"}]}
         return {"results_count": 1, "results": [{"bigg_id": f"{search_type}_{query}"}]}
 
     def get_model(self, model_id: str) -> dict[str, Any]:
-        if model_id == "iND750":
+        if model_id in {"iND750", "i1", "i2"}:
             return {"bigg_id": model_id, "organism": "Saccharomyces"}
         raise ApiError("not found", status_code=404)
 
     def list_model_reactions(self, _model_id: str) -> list[dict[str, Any]]:
+        if _model_id == "i1":
+            return [{"bigg_id": "R1"}, {"bigg_id": "R2"}]
+        if _model_id == "i2":
+            return [{"bigg_id": "R2"}, {"bigg_id": "R3"}]
         return [{"bigg_id": "R1"}, {"bigg_id": "R2"}]
 
     def list_model_metabolites(self, _model_id: str) -> list[dict[str, Any]]:
+        if _model_id == "i1":
+            return [{"bigg_id": "m1"}, {"bigg_id": "m2"}]
+        if _model_id == "i2":
+            return [{"bigg_id": "m2"}, {"bigg_id": "m3"}]
         return [{"bigg_id": "m1"}, {"bigg_id": "m2"}]
 
     def list_model_genes(self, _model_id: str) -> list[dict[str, Any]]:
+        if _model_id == "i1":
+            return [{"bigg_id": "g1"}, {"bigg_id": "g2"}]
+        if _model_id == "i2":
+            return [{"bigg_id": "g2"}, {"bigg_id": "g3"}]
         return [{"bigg_id": "g1"}, {"bigg_id": "g2"}]
 
     def get_model_reaction(self, _model_id: str, reaction_id: str) -> dict[str, Any]:
@@ -53,12 +71,17 @@ class FakeClient:
         return {"bigg_id": metabolite_id}
 
     def get_model_gene(self, _model_id: str, gene_id: str) -> dict[str, Any]:
-        return {"bigg_id": gene_id}
+        return {
+            "bigg_id": gene_id,
+            "database_links": {"X": [{"id": "1", "link": "http://x"}]},
+            "reactions": [{"bigg_id": "R1"}],
+        }
 
     def get_universal_reaction(self, reaction_id: str) -> dict[str, Any]:
         return {
             "bigg_id": reaction_id,
             "models_containing_reaction": [{"bigg_id": "iA", "organism": "OrgA"}],
+            "database_links": {"Y": [{"id": "2", "link": "http://y"}]},
         }
 
     def get_universal_metabolite(self, metabolite_id: str) -> dict[str, Any]:
@@ -172,3 +195,35 @@ def test_namespace_operations() -> None:
     assert op_namespace_reactions(client) == b"rxn\n"
     assert op_namespace_metabolites(client) == b"met\n"
     assert op_namespace_universal_model(client) == b"{}"
+
+
+def test_op_compare_models() -> None:
+    data = op_compare_models(cast(BiggApiClient, FakeClient()), model_a="i1", model_b="i2")
+    assert data["reactions"] == {"a_only_count": 1, "b_only_count": 1, "overlap_count": 1}
+
+
+def test_op_where_gene() -> None:
+    data = op_where_gene(cast(BiggApiClient, FakeClient()), gene_id="g1", limit=2)
+    assert data["results_count"] == 1
+
+
+def test_op_links() -> None:
+    data = op_links(
+        cast(BiggApiClient, FakeClient()),
+        resource="reaction",
+        identifier="ADA",
+        model_id=None,
+    )
+    assert data["results_count"] == 1
+
+
+def test_op_batch_show() -> None:
+    data = op_batch_show(
+        cast(BiggApiClient, FakeClient()),
+        resource="model",
+        items=["i1", "missing"],
+        model_id=None,
+    )
+    results = data["results"]
+    assert isinstance(results, list)
+    assert len(results) == 2

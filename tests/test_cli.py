@@ -318,3 +318,80 @@ def test_namespace_commands(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
     assert rxn.read_bytes() == b"rxn\n"
     assert met.read_bytes() == b"met\n"
     assert uni.read_bytes() == b"{}"
+
+
+def test_compare_models_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeClient:
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            return None
+
+    monkeypatch.setattr(cli, "BiggApiClient", lambda _settings: FakeClient())
+    monkeypatch.setattr(
+        cli,
+        "op_compare_models",
+        lambda *_args, **_kwargs: {"reactions": {"overlap_count": 1}},
+    )
+    code, out, _err = _run(["--output", "json", "compare", "models", "i1", "i2"])
+    assert code == 0
+    assert "overlap_count" in out
+
+
+def test_where_gene_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeClient:
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            return None
+
+    monkeypatch.setattr(cli, "BiggApiClient", lambda _settings: FakeClient())
+    monkeypatch.setattr(cli, "op_where_gene", lambda *_args, **_kwargs: {"results_count": 1})
+    code, out, _err = _run(["--output", "json", "where", "gene", "g1"])
+    assert code == 0
+    assert "results_count" in out
+
+
+def test_links_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeClient:
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            return None
+
+    monkeypatch.setattr(cli, "BiggApiClient", lambda _settings: FakeClient())
+    monkeypatch.setattr(cli, "op_links", lambda *_args, **_kwargs: {"results_count": 1})
+    code, out, _err = _run(["--output", "json", "links", "reaction", "ADA"])
+    assert code == 0
+    assert "results_count" in out
+
+
+def test_batch_show_command(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class FakeClient:
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            return None
+
+    id_file = tmp_path / "ids.txt"
+    id_file.write_text("i1\nmissing\n", encoding="utf-8")
+
+    monkeypatch.setattr(cli, "BiggApiClient", lambda _settings: FakeClient())
+    monkeypatch.setattr(cli, "op_batch_show", lambda *_args, **_kwargs: {"results_count": 2})
+    code, out, _err = _run(
+        [
+            "--output",
+            "json",
+            "batch",
+            "show",
+            "model",
+            "--from-file",
+            str(id_file),
+        ]
+    )
+    assert code == 0
+    assert "results_count" in out

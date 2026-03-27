@@ -604,3 +604,174 @@ def op_namespace_metabolites(client: BiggApiClient) -> bytes:
 
 def op_namespace_universal_model(client: BiggApiClient) -> bytes:
     return client.download_universal_model()
+
+
+def _extract_bigg_ids(items: JsonArray) -> set[str]:
+    ids: set[str] = set()
+    for item in items:
+        if isinstance(item, dict):
+            value = item.get("bigg_id")
+            if isinstance(value, str) and value:
+                ids.add(value)
+    return ids
+
+
+def op_compare_models(client: BiggApiClient, *, model_a: str, model_b: str) -> JsonObject:
+    a_reactions = _extract_bigg_ids(op_model_reactions(client, model_id=model_a, limit=None))
+    b_reactions = _extract_bigg_ids(op_model_reactions(client, model_id=model_b, limit=None))
+    a_metabolites = _extract_bigg_ids(op_model_metabolites(client, model_id=model_a, limit=None))
+    b_metabolites = _extract_bigg_ids(op_model_metabolites(client, model_id=model_b, limit=None))
+    a_genes = _extract_bigg_ids(op_model_genes(client, model_id=model_a, limit=None))
+    b_genes = _extract_bigg_ids(op_model_genes(client, model_id=model_b, limit=None))
+
+    return {
+        "model_a": model_a,
+        "model_b": model_b,
+        "reactions": {
+            "a_only_count": len(a_reactions - b_reactions),
+            "b_only_count": len(b_reactions - a_reactions),
+            "overlap_count": len(a_reactions & b_reactions),
+        },
+        "metabolites": {
+            "a_only_count": len(a_metabolites - b_metabolites),
+            "b_only_count": len(b_metabolites - a_metabolites),
+            "overlap_count": len(a_metabolites & b_metabolites),
+        },
+        "genes": {
+            "a_only_count": len(a_genes - b_genes),
+            "b_only_count": len(b_genes - a_genes),
+            "overlap_count": len(a_genes & b_genes),
+        },
+    }
+
+
+def op_where_gene(client: BiggApiClient, *, gene_id: str, limit: int | None) -> JsonObject:
+    search = op_search(client, query=gene_id, search_type="genes", limit=limit)
+    results_raw = search.get("results")
+    results = (
+        [item for item in results_raw if isinstance(item, dict)]
+        if isinstance(results_raw, list)
+        else []
+    )
+
+    resolved: JsonArray = []
+    for item in results:
+        model_id = item.get("model_bigg_id")
+        if not isinstance(model_id, str) or not model_id:
+            continue
+        gene = _safe_get_object(client.get_model_gene, model_id, gene_id)
+        if gene is None:
+            continue
+        reactions_raw = gene.get("reactions")
+        reactions = reactions_raw if isinstance(reactions_raw, list) else []
+        resolved.append(
+            {
+                "model_bigg_id": model_id,
+                "gene": gene,
+                "reaction_count": len(reactions),
+            }
+        )
+
+    return {
+        "gene_id": gene_id,
+        "results_count": len(resolved),
+        "results": resolved,
+    }
+
+
+def _flatten_database_links(resource_id: str, database_links: JsonValue) -> JsonArray:
+    rows: JsonArray = []
+    if not isinstance(database_links, dict):
+        return rows
+    for db_name, entries in database_links.items():
+        if not isinstance(db_name, str) or not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if isinstance(entry, dict):
+                rows.append(
+                    {
+                        "resource_id": resource_id,
+                        "database": db_name,
+                        "id": _as_str(entry.get("id")),
+                        "link": _as_str(entry.get("link")),
+                    }
+                )
+    return rows
+
+
+def op_links(
+    client: BiggApiClient, *, resource: str, identifier: str, model_id: str | None
+) -> JsonObject:
+    normalized = resource.lower()
+    if normalized == "model":
+        obj = op_models_show(client, model_id=identifier)
+    elif normalized == "reaction":
+        obj = (
+            op_model_reaction(client, model_id=model_id, reaction_id=identifier)
+            if model_id
+            else op_universal_reaction(client, reaction_id=identifier)
+        )
+    elif normalized == "metabolite":
+        obj = (
+            op_model_metabolite(client, model_id=model_id, metabolite_id=identifier)
+            if model_id
+            else op_universal_metabolite(client, metabolite_id=identifier)
+        )
+    elif normalized == "gene":
+        if not model_id:
+            raise UsageError("--model-id is required for gene links")
+        obj = op_model_gene(client, model_id=model_id, gene_id=identifier)
+    else:
+        raise UsageError("resource must be one of: model, reaction, metabolite, gene")
+
+    database_links = obj.get("database_links")
+    rows = _flatten_database_links(identifier, database_links)
+    return {
+        "resource": normalized,
+        "id": identifier,
+        "model_id": model_id or "",
+        "results_count": len(rows),
+        "results": rows,
+    }
+
+
+def op_batch_show(
+    client: BiggApiClient, *, resource: str, items: list[str], model_id: str | None
+) -> JsonObject:
+    normalized = resource.lower()
+    rows: JsonArray = []
+    for raw in items:
+        item = raw.strip()
+        if not item:
+            continue
+        try:
+            if normalized == "model":
+                resolved = op_models_show(client, model_id=item)
+            elif normalized == "reaction":
+                resolved = (
+                    op_model_reaction(client, model_id=model_id, reaction_id=item)
+                    if model_id
+                    else op_universal_reaction(client, reaction_id=item)
+                )
+            elif normalized == "metabolite":
+                resolved = (
+                    op_model_metabolite(client, model_id=model_id, metabolite_id=item)
+                    if model_id
+                    else op_universal_metabolite(client, metabolite_id=item)
+                )
+            elif normalized == "gene":
+                if not model_id:
+                    raise UsageError("--model-id is required for gene batch show")
+                resolved = op_model_gene(client, model_id=model_id, gene_id=item)
+            else:
+                raise UsageError("resource must be one of: model, reaction, metabolite, gene")
+            rows.append({"id": item, "ok": True, "result": resolved})
+        except (ApiError, UsageError) as exc:
+            rows.append({"id": item, "ok": False, "error": str(exc)})
+
+    return {
+        "resource": normalized,
+        "model_id": model_id or "",
+        "results_count": len(rows),
+        "results": rows,
+    }

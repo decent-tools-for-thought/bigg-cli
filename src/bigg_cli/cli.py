@@ -12,8 +12,11 @@ from .client import BiggApiClient, ClientSettings
 from .config import load_config
 from .core import (
     op_api_get,
+    op_batch_show,
+    op_compare_models,
     op_fetch,
     op_find,
+    op_links,
     op_model_export_ids,
     op_model_gene,
     op_model_genes,
@@ -41,6 +44,7 @@ from .core import (
     op_universal_where_metabolite,
     op_universal_where_reaction,
     op_version,
+    op_where_gene,
     render_output,
     write_bytes,
     write_download,
@@ -83,6 +87,44 @@ def _add_search_commands(subparsers: Any) -> None:
 
     show = subparsers.add_parser("show", help="Resolve a BiGG identifier across resources")
     show.add_argument("identifier", help="ID to resolve")
+
+    where = subparsers.add_parser("where", help="Cross-resource presence queries")
+    where_sub = where.add_subparsers(dest="where_command", required=True)
+    where_gene = where_sub.add_parser("gene", help="Find a gene across models")
+    where_gene.add_argument("gene_id", help="Gene BiGG ID")
+    where_gene.add_argument("--limit", type=int, help="Limit matched models")
+
+
+def _add_analysis_commands(subparsers: Any) -> None:
+    compare = subparsers.add_parser("compare", help="Compare models and resources")
+    compare_sub = compare.add_subparsers(dest="compare_command", required=True)
+    compare_models = compare_sub.add_parser("models", help="Compare two models")
+    compare_models.add_argument("model_a", help="First model ID")
+    compare_models.add_argument("model_b", help="Second model ID")
+
+    links = subparsers.add_parser("links", help="Normalize database links for a resource")
+    links.add_argument("resource", choices=("model", "reaction", "metabolite", "gene"))
+    links.add_argument("identifier", help="Resource ID")
+    links.add_argument("--model-id", help="Model ID for model-scoped resource lookups")
+
+    batch = subparsers.add_parser("batch", help="Batch operations")
+    batch_sub = batch.add_subparsers(dest="batch_command", required=True)
+    batch_show = batch_sub.add_parser("show", help="Resolve a list of IDs")
+    batch_show.add_argument("resource", choices=("model", "reaction", "metabolite", "gene"))
+    batch_show.add_argument("--model-id", help="Model ID for model-scoped resource lookups")
+    batch_show.add_argument(
+        "--id",
+        dest="ids",
+        action="append",
+        default=[],
+        help="Identifier to resolve (repeatable)",
+    )
+    batch_show.add_argument(
+        "--from-file",
+        type=Path,
+        dest="from_file",
+        help="Read identifiers from newline-delimited file",
+    )
 
 
 def _add_models_commands(subparsers: Any) -> None:
@@ -266,6 +308,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("version", help="Show BiGG database/API version")
     _add_search_commands(subparsers)
+    _add_analysis_commands(subparsers)
     _add_models_commands(subparsers)
     _add_universal_commands(subparsers)
     _add_api_commands(subparsers)
@@ -324,6 +367,51 @@ def dispatch(args: argparse.Namespace) -> int:
                 op_show(client, identifier=args.identifier),
                 output=output,
                 context="show",
+            )
+
+        if command == "where" and args.where_command == "gene":
+            return _print_rendered(
+                op_where_gene(client, gene_id=args.gene_id, limit=args.limit),
+                output=output,
+                context="where.gene",
+            )
+
+        if command == "compare" and args.compare_command == "models":
+            return _print_rendered(
+                op_compare_models(client, model_a=args.model_a, model_b=args.model_b),
+                output=output,
+                context="compare.models",
+            )
+
+        if command == "links":
+            return _print_rendered(
+                op_links(
+                    client,
+                    resource=args.resource,
+                    identifier=args.identifier,
+                    model_id=args.model_id,
+                ),
+                output=output,
+                context="links",
+            )
+
+        if command == "batch" and args.batch_command == "show":
+            ids = list(args.ids)
+            if args.from_file is not None:
+                ids.extend(
+                    [line for line in args.from_file.read_text().splitlines() if line.strip()]
+                )
+            if not ids:
+                raise UsageError("batch show requires --id and/or --from-file")
+            return _print_rendered(
+                op_batch_show(
+                    client,
+                    resource=args.resource,
+                    items=ids,
+                    model_id=args.model_id,
+                ),
+                output=output,
+                context="batch.show",
             )
 
         if command == "models":

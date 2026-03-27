@@ -81,6 +81,14 @@ Generic API escape hatch:
 ```bash
 bigg api get /api/v2/models/iND750
 bigg api get /api/v2/search --query query=g3p --query search_type=metabolites
+
+Additional analysis workflows:
+
+```bash
+bigg compare models iJO1366 iML1515
+bigg where gene gapA
+bigg links reaction ADA
+bigg batch show model --id iJO1366 --id iML1515
 ```
 
 ## Command Surface
@@ -89,6 +97,10 @@ bigg api get /api/v2/search --query query=g3p --query search_type=metabolites
 - `search`: Query API search endpoint (`models|reactions|metabolites|genes`).
 - `find <query>`: Search all resource families in one call.
 - `show <id>`: Resolve an ID across model/universal resources.
+- `where gene <gene_id>`: Find matching genes across models.
+- `compare models <a> <b>`: Compare overlap and differences.
+- `links <resource> <id> [--model-id ...]`: Flatten external database links.
+- `batch show <resource> --id ... [--from-file ...]`: Batch resource resolution.
 - `models`:
   - `list`
   - `show <model_id>`
