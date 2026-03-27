@@ -7,7 +7,7 @@ name = "bigg-cli"
 version = "0.1.0"
 description = "Command-line client for the BiGG Models API"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 license = { text = "MIT" }
 authors = [
   { name = "BiGG CLI Maintainers" }
@@ -37,6 +37,7 @@ bigg = "bigg_cli.cli:run"
 
 [project.optional-dependencies]
 dev = [
+  "build>=1.2.2",
   "mypy>=1.10",
   "pytest>=8.2",
   "ruff>=0.5",
@@ -49,14 +50,14 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py313"
 line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ARG", "RUF"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 strict = true
 warn_unused_configs = true
 warn_return_any = true
