@@ -46,6 +46,7 @@ bigg models show iND750
 bigg models reaction iND750 GAPD
 bigg models metabolite iND750 10fthf_c
 bigg models gene iMM904 Q0045
+bigg show iND750
 ```
 
 Search the catalog:
@@ -61,6 +62,18 @@ Universal namespace:
 bigg universal reactions --limit 10
 bigg universal reaction ADA
 bigg universal metabolite g3p
+bigg universal where-reaction ADA
+bigg universal where-metabolite g3p
+
+Download static model files and namespace resources:
+
+```bash
+bigg models download-static iMM904 --format xml
+bigg models download-static iMM904 --format mat --out iMM904.mat
+bigg namespace reactions
+bigg namespace metabolites
+bigg namespace universal-model
+```
 ```
 
 Generic API escape hatch:
@@ -74,17 +87,32 @@ bigg api get /api/v2/search --query query=g3p --query search_type=metabolites
 
 - `version`: BiGG database/API version.
 - `search`: Query API search endpoint (`models|reactions|metabolites|genes`).
+- `find <query>`: Search all resource families in one call.
+- `show <id>`: Resolve an ID across model/universal resources.
 - `models`:
   - `list`
   - `show <model_id>`
+  - `summary <model_id>`
   - `download <model_id>`
+  - `download-static <model_id> --format xml|xml.gz|json|mat`
   - `reactions <model_id>` / `reaction <model_id> <reaction_id>`
+  - `reaction-equation <model_id> <reaction_id>`
   - `metabolites <model_id>` / `metabolite <model_id> <metabolite_id>`
   - `genes <model_id>` / `gene <model_id> <gene_id>`
+  - `exists <model_id> [--reaction ...] [--metabolite ...] [--gene ...]`
+  - `export-ids <model_id> --type reactions|metabolites|genes`
+  - `stats [--organism <pattern>]`
 - `universal`:
   - `reactions` / `reaction <reaction_id>`
   - `metabolites` / `metabolite <metabolite_id>`
+  - `where-reaction <reaction_id>`
+  - `where-metabolite <metabolite_id>`
 - `api get <path>`: Direct GET against API/static endpoints.
+- `fetch <path-or-url>`: GET with optional field extraction.
+- `namespace`:
+  - `reactions`
+  - `metabolites`
+  - `universal-model`
 
 ## Output Modes
 
@@ -161,6 +189,8 @@ pytest
 - Respect upstream guidance to avoid high request rates (BiGG asks users not to exceed ~10 requests/second).
 - API data shape can vary across endpoints; `--output json` is safest for downstream machine use.
 - `models download` uses JSON endpoint `/api/v2/models/{id}/download` and writes raw JSON model data.
+- Static model formats use `/static/models/{model_id}.{xml|xml.gz|json|mat}`.
+- Namespace downloads use `/static/namespace/bigg_models_reactions.txt`, `/static/namespace/bigg_models_metabolites.txt`, and `/static/namespace/universal_model.json`.
 
 ## Attribution
 

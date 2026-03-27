@@ -156,6 +156,22 @@ class BiggApiClient:
     def api_get(self, path: str, query: dict[str, str]) -> JsonData:
         return self.get_json(path, params=query if query else None)
 
+    def download_static_model(self, model_id: str, fmt: str) -> bytes:
+        ext = fmt
+        if fmt == "xml.gz":
+            ext = "xml.gz"
+        path = f"/static/models/{model_id}.{ext}"
+        return self.get_raw_bytes(path)
+
+    def download_namespace_reactions(self) -> bytes:
+        return self.get_raw_bytes("/static/namespace/bigg_models_reactions.txt")
+
+    def download_namespace_metabolites(self) -> bytes:
+        return self.get_raw_bytes("/static/namespace/bigg_models_metabolites.txt")
+
+    def download_universal_model(self) -> bytes:
+        return self.get_raw_bytes("/static/namespace/universal_model.json")
+
     def build_url(self, path: str, query: dict[str, str]) -> str:
         base = self._url(path)
         if not query:

@@ -3,15 +3,22 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from statistics import median
+from typing import cast
+from urllib.parse import parse_qsl, urlparse
 
 from .client import BiggApiClient
-from .errors import UsageError
+from .errors import ApiError, UsageError
 from .types import JsonArray, JsonData, JsonObject, JsonValue, is_json_array, is_json_object
 
 VALID_SEARCH_TYPES = {"models", "reactions", "metabolites", "genes"}
 VALID_OUTPUTS = {"text", "json", "jsonl"}
+VALID_EXPORT_TYPES = {"reactions", "metabolites", "genes"}
+VALID_MODEL_FILE_FORMATS = {"xml", "xml.gz", "json", "mat"}
 
 
 @dataclass(frozen=True)
@@ -78,6 +85,33 @@ def _render_text(data: JsonData, context: str) -> str:
             return "No results"
         return _render_list_lines(data, ("model_bigg_id", "bigg_id", "name", "organism"))
 
+    if context == "models.reaction_equation" and isinstance(data, dict):
+        equation = _as_str(data.get("equation"))
+        return equation or "No equation available"
+
+    if context == "models.exists" and isinstance(data, dict):
+        exists = bool(data.get("exists", False))
+        lines = [f"exists={str(exists).lower()}"]
+        checks = data.get("checks")
+        if isinstance(checks, dict):
+            for key, value in checks.items():
+                lines.append(f"{key}={str(bool(value)).lower()}")
+        return "\n".join(lines)
+
+    if context == "models.export_ids" and isinstance(data, dict):
+        ids = data.get("ids")
+        if isinstance(ids, list):
+            return "\n".join(_as_str(item) for item in ids)
+        return "No results"
+
+    if context in {"universal.where_reaction", "universal.where_metabolite"} and isinstance(
+        data, dict
+    ):
+        models = data.get("models")
+        if not isinstance(models, list) or not models:
+            return "No results"
+        return _render_list_lines(models, ("bigg_id", "organism"))
+
     return json.dumps(data, indent=2, sort_keys=True)
 
 
@@ -131,6 +165,10 @@ def parse_query_params(items: list[str]) -> dict[str, str]:
 def write_download(path: Path, data: JsonData) -> None:
     content = json.dumps(data, indent=2, sort_keys=True)
     path.write_text(content, encoding="utf-8")
+
+
+def write_bytes(path: Path, data: bytes) -> None:
+    path.write_bytes(data)
 
 
 def op_version(client: BiggApiClient) -> JsonObject:
@@ -234,3 +272,335 @@ def op_universal_metabolite(client: BiggApiClient, *, metabolite_id: str) -> Jso
 def op_api_get(client: BiggApiClient, *, path: str, query: list[str]) -> JsonData:
     parsed_query = parse_query_params(query)
     return client.api_get(path, parsed_query)
+
+
+def _safe_get_object(getter: Callable[..., JsonData], *args: str) -> JsonObject | None:
+    try:
+        data = getter(*args)
+        if isinstance(data, dict):
+            return data
+        return None
+    except ApiError as exc:
+        if exc.status_code == 404:
+            return None
+        raise
+
+
+def op_find(client: BiggApiClient, *, query: str, limit: int | None) -> JsonObject:
+    grouped: JsonObject = {}
+    total = 0
+    for search_type in sorted(VALID_SEARCH_TYPES):
+        result = op_search(client, query=query, search_type=search_type, limit=limit)
+        grouped[search_type] = result
+        count = result.get("results_count")
+        total += int(count) if isinstance(count, int) else 0
+    return {"query": query, "total_results": total, "groups": grouped}
+
+
+def op_show(client: BiggApiClient, *, identifier: str) -> JsonObject:
+    model = _safe_get_object(client.get_model, identifier)
+    if model is not None:
+        return {
+            "kind": "model",
+            "id": identifier,
+            "resolved": model,
+        }
+
+    reaction = _safe_get_object(client.get_universal_reaction, identifier)
+    if reaction is not None:
+        return {
+            "kind": "universal_reaction",
+            "id": identifier,
+            "resolved": reaction,
+        }
+
+    metabolite = _safe_get_object(client.get_universal_metabolite, identifier)
+    if metabolite is not None:
+        return {
+            "kind": "universal_metabolite",
+            "id": identifier,
+            "resolved": metabolite,
+        }
+
+    genes = op_search(client, query=identifier, search_type="genes", limit=25)
+    gene_results = genes.get("results")
+    if isinstance(gene_results, list):
+        exact = [
+            item
+            for item in gene_results
+            if isinstance(item, dict) and _as_str(item.get("bigg_id")) == identifier
+        ]
+        if exact:
+            first = exact[0]
+            model_id = _as_str(first.get("model_bigg_id"))
+            if model_id:
+                gene = _safe_get_object(client.get_model_gene, model_id, identifier)
+                if gene is not None:
+                    return {
+                        "kind": "model_gene",
+                        "id": identifier,
+                        "model_bigg_id": model_id,
+                        "resolved": gene,
+                    }
+
+    raise UsageError(f"No object resolved for ID: {identifier}")
+
+
+def op_models_summary(client: BiggApiClient, *, model_id: str) -> JsonObject:
+    model = op_models_show(client, model_id=model_id)
+    reactions = op_model_reactions(client, model_id=model_id, limit=5)
+    metabolites = op_model_metabolites(client, model_id=model_id, limit=5)
+    genes = op_model_genes(client, model_id=model_id, limit=5)
+    return {
+        "model_id": model_id,
+        "model": model,
+        "preview": {
+            "reactions": reactions,
+            "metabolites": metabolites,
+            "genes": genes,
+        },
+    }
+
+
+def _format_term(metabolite: JsonObject, coeff: float) -> str:
+    comp = _as_str(metabolite.get("compartment_bigg_id"))
+    base = _as_str(metabolite.get("bigg_id"))
+    token = f"{base}_{comp}" if comp else base
+    mag = abs(coeff)
+    if mag == 1:
+        return token
+    if float(int(mag)) == mag:
+        return f"{int(mag)} {token}"
+    return f"{mag:g} {token}"
+
+
+def _build_equation(metabolites: JsonArray) -> str:
+    left: list[str] = []
+    right: list[str] = []
+    for item in metabolites:
+        if not isinstance(item, dict):
+            continue
+        raw = item.get("stoichiometry")
+        if not isinstance(raw, (int, float)):
+            continue
+        coeff = float(raw)
+        if coeff < 0:
+            left.append(_format_term(item, coeff))
+        elif coeff > 0:
+            right.append(_format_term(item, coeff))
+    return f"{' + '.join(left) if left else '∅'} -> {' + '.join(right) if right else '∅'}"
+
+
+def op_model_reaction_equation(
+    client: BiggApiClient, *, model_id: str, reaction_id: str
+) -> JsonObject:
+    reaction = op_model_reaction(client, model_id=model_id, reaction_id=reaction_id)
+    metabolites_raw = reaction.get("metabolites")
+    metabolites = metabolites_raw if isinstance(metabolites_raw, list) else []
+    equation = _build_equation(metabolites)
+    return {
+        "model_id": model_id,
+        "reaction_id": reaction_id,
+        "equation": equation,
+        "reaction": reaction,
+    }
+
+
+def _exists_check(getter: Callable[..., JsonData], *args: str) -> bool:
+    try:
+        getter(*args)
+        return True
+    except ApiError as exc:
+        if exc.status_code == 404:
+            return False
+        raise
+
+
+def op_models_exists(
+    client: BiggApiClient,
+    *,
+    model_id: str,
+    reaction_id: str | None,
+    metabolite_id: str | None,
+    gene_id: str | None,
+) -> JsonObject:
+    checks: JsonObject = {}
+    model_exists = _exists_check(client.get_model, model_id)
+    checks["model"] = model_exists
+
+    if reaction_id is not None:
+        checks["reaction"] = model_exists and _exists_check(
+            client.get_model_reaction, model_id, reaction_id
+        )
+    if metabolite_id is not None:
+        checks["metabolite"] = model_exists and _exists_check(
+            client.get_model_metabolite,
+            model_id,
+            metabolite_id,
+        )
+    if gene_id is not None:
+        checks["gene"] = model_exists and _exists_check(client.get_model_gene, model_id, gene_id)
+
+    exists = all(bool(v) for v in checks.values())
+    return {
+        "exists": exists,
+        "model_id": model_id,
+        "checks": checks,
+    }
+
+
+def op_universal_where_reaction(client: BiggApiClient, *, reaction_id: str) -> JsonObject:
+    reaction = op_universal_reaction(client, reaction_id=reaction_id)
+    models_raw = reaction.get("models_containing_reaction")
+    models = models_raw if isinstance(models_raw, list) else []
+    return {
+        "reaction_id": reaction_id,
+        "count": len(models),
+        "models": models,
+    }
+
+
+def op_universal_where_metabolite(client: BiggApiClient, *, metabolite_id: str) -> JsonObject:
+    metabolite = op_universal_metabolite(client, metabolite_id=metabolite_id)
+    models_raw = metabolite.get("compartments_in_models")
+    models = models_raw if isinstance(models_raw, list) else []
+    return {
+        "metabolite_id": metabolite_id,
+        "count": len(models),
+        "models": models,
+    }
+
+
+def op_model_export_ids(client: BiggApiClient, *, model_id: str, export_type: str) -> JsonObject:
+    normalized = export_type.lower()
+    if normalized not in VALID_EXPORT_TYPES:
+        expected = ", ".join(sorted(VALID_EXPORT_TYPES))
+        raise UsageError(f"Invalid export type '{export_type}'. Expected one of: {expected}")
+
+    items: JsonArray
+    if normalized == "reactions":
+        items = op_model_reactions(client, model_id=model_id, limit=None)
+    elif normalized == "metabolites":
+        items = op_model_metabolites(client, model_id=model_id, limit=None)
+    else:
+        items = op_model_genes(client, model_id=model_id, limit=None)
+
+    ids: list[str] = []
+    for item in items:
+        if isinstance(item, dict):
+            value = item.get("bigg_id")
+            if isinstance(value, str) and value:
+                ids.append(value)
+
+    ids_json: JsonArray = list(ids)
+    return {
+        "model_id": model_id,
+        "type": normalized,
+        "count": len(ids),
+        "ids": ids_json,
+    }
+
+
+def op_model_stats(client: BiggApiClient, *, organism_pattern: str | None) -> JsonObject:
+    listed = op_models_list(client, limit=None)
+    results_raw = listed.get("results")
+    models = (
+        [item for item in results_raw if isinstance(item, dict)]
+        if isinstance(results_raw, list)
+        else []
+    )
+
+    if organism_pattern:
+        query = organism_pattern.lower()
+        models = [m for m in models if query in _as_str(m.get("organism")).lower()]
+
+    reaction_counts = [
+        int(v) for model in models for v in [model.get("reaction_count")] if isinstance(v, int)
+    ]
+    organisms = [
+        _as_str(model.get("organism")) for model in models if _as_str(model.get("organism"))
+    ]
+    top = Counter(organisms).most_common(10)
+    top_organisms: JsonArray = [{"organism": organism, "count": count} for organism, count in top]
+
+    summary: JsonObject = {
+        "model_count": len(models),
+        "organism_pattern": organism_pattern or "",
+        "top_organisms": top_organisms,
+    }
+    if reaction_counts:
+        summary["reaction_count_min"] = min(reaction_counts)
+        summary["reaction_count_max"] = max(reaction_counts)
+        summary["reaction_count_median"] = float(median(reaction_counts))
+    return summary
+
+
+def _extract_by_path(data: JsonData, field: str) -> JsonArray:
+    parts = field.split(".")
+    current: list[JsonValue] = [cast(JsonValue, data)]
+    for part in parts:
+        is_list = part.endswith("[]")
+        key = part[:-2] if is_list else part
+        next_values: list[JsonValue] = []
+        for value in current:
+            if not isinstance(value, dict):
+                continue
+            child = value.get(key)
+            if is_list:
+                if isinstance(child, list):
+                    next_values.extend(child)
+            elif child is not None:
+                next_values.append(child)
+        current = next_values
+    return current
+
+
+def _normalize_fetch_path_and_query(
+    path_or_url: str, query: dict[str, str]
+) -> tuple[str, dict[str, str]]:
+    if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
+        parsed = urlparse(path_or_url)
+        merged = dict(parse_qsl(parsed.query))
+        merged.update(query)
+        return parsed.path or "/", merged
+    return path_or_url, query
+
+
+def op_fetch(
+    client: BiggApiClient,
+    *,
+    path_or_url: str,
+    query: list[str],
+    fields: list[str],
+) -> JsonData:
+    parsed_query = parse_query_params(query)
+    path, merged_query = _normalize_fetch_path_and_query(path_or_url, parsed_query)
+    data = client.api_get(path, merged_query)
+    if not fields:
+        return data
+    extracted: JsonArray = []
+    for field in fields:
+        values = _extract_by_path(data, field)
+        for value in values:
+            extracted.append({"field": field, "value": value})
+    return extracted
+
+
+def op_models_download_static(client: BiggApiClient, *, model_id: str, fmt: str) -> bytes:
+    normalized = fmt.lower()
+    if normalized not in VALID_MODEL_FILE_FORMATS:
+        expected = ", ".join(sorted(VALID_MODEL_FILE_FORMATS))
+        raise UsageError(f"Invalid model format '{fmt}'. Expected one of: {expected}")
+    return client.download_static_model(model_id, normalized)
+
+
+def op_namespace_reactions(client: BiggApiClient) -> bytes:
+    return client.download_namespace_reactions()
+
+
+def op_namespace_metabolites(client: BiggApiClient) -> bytes:
+    return client.download_namespace_metabolites()
+
+
+def op_namespace_universal_model(client: BiggApiClient) -> bytes:
+    return client.download_universal_model()

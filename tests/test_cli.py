@@ -93,3 +93,228 @@ def test_search_text_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert code == 0
     assert "g3p" in out
     assert err == ""
+
+
+def test_find_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeClient:
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            return None
+
+    monkeypatch.setattr(cli, "BiggApiClient", lambda _settings: FakeClient())
+    monkeypatch.setattr(
+        cli, "op_find", lambda *_args, **_kwargs: {"groups": {}, "total_results": 0}
+    )
+    code, _out, err = _run(["--output", "json", "find", "g3p"])
+    assert code == 0
+    assert err == ""
+
+
+def test_show_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeClient:
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            return None
+
+    monkeypatch.setattr(cli, "BiggApiClient", lambda _settings: FakeClient())
+    monkeypatch.setattr(cli, "op_show", lambda *_args, **_kwargs: {"kind": "model"})
+    code, out, _err = _run(["--output", "json", "show", "iND750"])
+    assert code == 0
+    assert "model" in out
+
+
+def test_models_summary(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeClient:
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            return None
+
+    monkeypatch.setattr(cli, "BiggApiClient", lambda _settings: FakeClient())
+    monkeypatch.setattr(cli, "op_models_summary", lambda *_args, **_kwargs: {"model_id": "iND750"})
+    code, out, _err = _run(["--output", "json", "models", "summary", "iND750"])
+    assert code == 0
+    assert "iND750" in out
+
+
+def test_models_reaction_equation(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeClient:
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            return None
+
+    monkeypatch.setattr(cli, "BiggApiClient", lambda _settings: FakeClient())
+    monkeypatch.setattr(
+        cli,
+        "op_model_reaction_equation",
+        lambda *_args, **_kwargs: {"equation": "a_c -> b_c"},
+    )
+    code, out, _err = _run(["models", "reaction-equation", "iND750", "R1"])
+    assert code == 0
+    assert "a_c -> b_c" in out
+
+
+def test_models_exists_false_exit_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeClient:
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            return None
+
+    monkeypatch.setattr(cli, "BiggApiClient", lambda _settings: FakeClient())
+    monkeypatch.setattr(
+        cli,
+        "op_models_exists",
+        lambda *_args, **_kwargs: {"exists": False, "checks": {"model": False}},
+    )
+    code, _out, _err = _run(["models", "exists", "missing"])
+    assert code == 1
+
+
+def test_models_export_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeClient:
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            return None
+
+    monkeypatch.setattr(cli, "BiggApiClient", lambda _settings: FakeClient())
+    monkeypatch.setattr(
+        cli,
+        "op_model_export_ids",
+        lambda *_args, **_kwargs: {"ids": ["g1", "g2"]},
+    )
+    code, out, _err = _run(["models", "export-ids", "iND750", "--type", "genes"])
+    assert code == 0
+    assert "g1" in out
+
+
+def test_models_stats(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeClient:
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            return None
+
+    monkeypatch.setattr(cli, "BiggApiClient", lambda _settings: FakeClient())
+    monkeypatch.setattr(cli, "op_model_stats", lambda *_args, **_kwargs: {"model_count": 2})
+    code, out, _err = _run(["--output", "json", "models", "stats"])
+    assert code == 0
+    assert "model_count" in out
+
+
+def test_universal_where_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeClient:
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            return None
+
+    monkeypatch.setattr(cli, "BiggApiClient", lambda _settings: FakeClient())
+    monkeypatch.setattr(
+        cli,
+        "op_universal_where_reaction",
+        lambda *_args, **_kwargs: {"models": [{"bigg_id": "iA"}]},
+    )
+    monkeypatch.setattr(
+        cli,
+        "op_universal_where_metabolite",
+        lambda *_args, **_kwargs: {"models": [{"bigg_id": "iA"}]},
+    )
+    code_r, out_r, _err_r = _run(["--output", "json", "universal", "where-reaction", "ADA"])
+    code_m, out_m, _err_m = _run(["--output", "json", "universal", "where-metabolite", "g3p"])
+    assert code_r == 0 and code_m == 0
+    assert "models" in out_r
+    assert "models" in out_m
+
+
+def test_fetch_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeClient:
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            return None
+
+    monkeypatch.setattr(cli, "BiggApiClient", lambda _settings: FakeClient())
+    monkeypatch.setattr(
+        cli,
+        "op_fetch",
+        lambda *_args, **_kwargs: [{"field": "results[].bigg_id", "value": "x"}],
+    )
+    code, out, _err = _run(
+        [
+            "--output",
+            "json",
+            "fetch",
+            "/api/v2/search",
+            "--field",
+            "results[].bigg_id",
+        ]
+    )
+    assert code == 0
+    assert "results[].bigg_id" in out
+
+
+def test_models_download_static(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class FakeClient:
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            return None
+
+    out_file = tmp_path / "model.xml"
+    monkeypatch.setattr(cli, "BiggApiClient", lambda _settings: FakeClient())
+    monkeypatch.setattr(cli, "op_models_download_static", lambda *_args, **_kwargs: b"<xml/>")
+    code, _out, _err = _run(
+        [
+            "models",
+            "download-static",
+            "iND750",
+            "--format",
+            "xml",
+            "--out",
+            str(out_file),
+        ]
+    )
+    assert code == 0
+    assert out_file.read_bytes() == b"<xml/>"
+
+
+def test_namespace_commands(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class FakeClient:
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            return None
+
+    monkeypatch.setattr(cli, "BiggApiClient", lambda _settings: FakeClient())
+    monkeypatch.setattr(cli, "op_namespace_reactions", lambda *_args, **_kwargs: b"rxn\n")
+    monkeypatch.setattr(cli, "op_namespace_metabolites", lambda *_args, **_kwargs: b"met\n")
+    monkeypatch.setattr(cli, "op_namespace_universal_model", lambda *_args, **_kwargs: b"{}")
+
+    rxn = tmp_path / "r.txt"
+    met = tmp_path / "m.txt"
+    uni = tmp_path / "u.json"
+
+    c1, _o1, _e1 = _run(["namespace", "reactions", "--out", str(rxn)])
+    c2, _o2, _e2 = _run(["namespace", "metabolites", "--out", str(met)])
+    c3, _o3, _e3 = _run(["namespace", "universal-model", "--out", str(uni)])
+
+    assert c1 == c2 == c3 == 0
+    assert rxn.read_bytes() == b"rxn\n"
+    assert met.read_bytes() == b"met\n"
+    assert uni.read_bytes() == b"{}"
