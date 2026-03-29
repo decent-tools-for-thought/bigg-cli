@@ -35,7 +35,7 @@ Source = "https://github.com/SBRG/bigg_models"
 [project.scripts]
 bigg = "bigg_cli.cli:run"
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
   "build>=1.2.2",
   "mypy>=1.10",
