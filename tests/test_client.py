@@ -11,7 +11,7 @@ from bigg_cli.errors import ApiError
 
 
 def _build_client(handler: Callable[[Request], Response]) -> BiggApiClient:
-    settings = ClientSettings(base_url="https://bigg.ucsd.edu", timeout=5)
+    settings = ClientSettings(base_url="http://bigg.ucsd.edu", timeout=5)
     http_client = httpx.Client(transport=MockTransport(handler), timeout=5)
     client = BiggApiClient(settings, http_client=http_client)
     return client

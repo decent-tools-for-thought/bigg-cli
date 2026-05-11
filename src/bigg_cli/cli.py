@@ -59,7 +59,7 @@ class _HelpParser(argparse.ArgumentParser):
 
 
 def _add_common_global_flags(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--base-url", help="BiGG API base URL (default: https://bigg.ucsd.edu)")
+    parser.add_argument("--base-url", help="BiGG API base URL (default: http://bigg.ucsd.edu)")
     parser.add_argument("--timeout", type=float, help="Request timeout in seconds")
     parser.add_argument(
         "--output",

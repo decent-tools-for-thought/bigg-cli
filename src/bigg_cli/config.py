@@ -10,7 +10,7 @@ from typing import Any, cast
 
 from .errors import ConfigError
 
-DEFAULT_BASE_URL = "https://bigg.ucsd.edu"
+DEFAULT_BASE_URL = "http://bigg.ucsd.edu"
 DEFAULT_TIMEOUT = 20.0
 DEFAULT_OUTPUT = "text"
 VALID_OUTPUTS = {"text", "json", "jsonl"}

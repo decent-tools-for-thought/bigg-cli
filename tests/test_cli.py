@@ -37,6 +37,7 @@ def test_top_level_help() -> None:
     code, out, err = _run(["--help"])
     assert code == 0
     assert "Command-line interface for the BiGG Models API" in out
+    assert "default: http://bigg.ucsd.edu" in out
     assert err == ""
 
 

@@ -87,7 +87,7 @@ Config files:
 Example:
 
 ```toml
-base_url = "https://bigg.ucsd.edu"
+base_url = "http://bigg.ucsd.edu"
 timeout = 30
 output = "text"
 ```

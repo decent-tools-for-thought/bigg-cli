@@ -14,7 +14,7 @@ def test_load_config_defaults(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
     monkeypatch.delenv("BIGG_OUTPUT", raising=False)
 
     cfg = load_config(config_path=tmp_path / "missing.toml")
-    assert cfg.base_url == "https://bigg.ucsd.edu"
+    assert cfg.base_url == "http://bigg.ucsd.edu"
     assert cfg.timeout == 20.0
     assert cfg.output == "text"
 
